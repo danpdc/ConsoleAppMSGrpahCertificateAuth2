@@ -1,7 +1,7 @@
 ---
 services: active-directory
 platforms: dotnet
-author: jmprieur
+author: danpdc
 ---
 # Authenticating to Azure AD in daemon apps with certificates
 
@@ -14,16 +14,13 @@ This sample is similar to [Daemon-DotNet](https://github.com/Azure-Samples/activ
 
 For more information about how the protocols work in this scenario and other scenarios, see [Authentication Scenarios for Azure AD](http://go.microsoft.com/fwlink/?LinkId=394414) and [Service to service calls using client credentials](https://github.com/Microsoft/azure-docs/blob/master/articles/active-directory/develop/active-directory-protocols-oauth-service-to-service.md)
 
-> Looking for previous versions of this code sample? Check out the tags on the [releases](../../releases) GitHub page.
-
 ## How to Run this sample
 
 To run this sample, you will need:
  - Visual Studio 2013 or above (also tested with Visual Studio 2015 and Visual Studio 2017)
  - An Internet connection
  - An Azure Active Directory (Azure AD) tenant. For more information on how to get an Azure AD tenant, please see [How to get an Azure AD tenant](https://azure.microsoft.com/en-us/documentation/articles/active-directory-howto-tenant/)
- - (Optional) If you want automatically create the applications in AAD corresponding to the daemon and service, and update the configuration files in their respective Visual Studio projects, you can run a script which requires Azure AD PowerShell. For details on how to install it, please see [the Azure Active Directory V2 PowerShell Module](https://www.powershellgallery.com/packages/AzureAD/).
- Alternatively, you also have the option of configuring the applications  manually through the Azure portal and by editing the code.
+
 
 ### Step 1:  Clone or download this repository
 
@@ -33,127 +30,119 @@ You can clone this repository from Visual Studio. Alternatively, from your shell
 
 ### Step 2:  Register the sample with your Azure Active Directory tenant and configure the code accordingly
 
-There are two options:
- - Option 1: you run the `Configure.ps1` PowerShell script which creates two applications in the Azure Active Directory, (one for the client and one for the service), and then updates the configuration files in the Visual Studio projects to point to those two newly created apps
- - Option 2: you do the same manually.
+1. Sign in to the [Azure portal](https://portal.azure.com)
+2. On the top bar, click on your account and under the Directory list, choose the Active Directory tenant where you wish to register your application.
+3. Click on More Services in the left hand nav, and choose Azure Active Directory.
+4. Click on App registrations and choose Add.
+5. Enter a friendly name for the application, for example 'GetUsers' and select 'Web Application and/or Web API' as the Application Type (even if here we have a console application).
+6. Since this application is a daemon and not a web application, it doesn't have a sign-in URL or app ID URI. For these two fields, enter "http://getusers". Click on Create to create the application.
+7. While still in the Azure portal, choose your application, click on Settings and choose Properties.
+8. Find the Application ID value and copy it to the clipboard.
 
-If you want to understand in more depth what needs to be done in the Azure portal, and how to change the code (Option 2), please have a look at [Manual-Configuration-Steps.md](./Manual-Configuration-Steps.md). Otherwise (Option 1), the steps to use the PowerShell are the following:
+### Step 3: Create a self signe certificate
 
-#### Find your tenant ID
-If you have access to multiple Azure Active Directory tenants, you must specify the ID of the tenant in which you wish to create the applications. Here's how to find you tenant ID:
- 1. Sign in to the [Azure portal](https://portal.azure.com).
- 2. On the top bar, click on your account and under the **Directory** list, choose the Active Directory tenant where you wish to register your application.
- 3. Click on **More Services** in the left hand nav, and choose **Azure Active Directory**.
- 4. Click on **Properties** and copy the value of the **Directory ID** property to the clipboard. This is your tenant ID. We'll need it in the next step.
+To complete this step you will use the New-SelfSignedCertificate Powershell command. You can find more information about the New-SelfSignedCertificat command here.
 
-#### Run the PowerShell script
- 1. Open the PowerShell command window and navigate to the root directory of the project.
- 2. The default Execution Policy for scripts is usually Restricted. In order to run the PowerShell script you need to set the Execution Policy to Unrestricted. You can set this just for the current PowerShell process by running the command
-
- `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted`
- 
- 3. Now run the script.
-
-  `.\Configure.ps1 <tenant ID>`
-
-  Replace `<tenantID>` with the tenant ID that you previously copied from the Azure portal.
-  
- 4. When requested, sign-in with the username and password of a user who has permissions to create applications in the AAD tenant.
-
-> The script executes and provisions the AAD applications (If you look at the AAD applications in the portal after that the script has run, you'll have two additional applications). The script also updates two configuration files in the Visual Studio solution (`TodoListDaemonWithCert\App.Config` and `TodoListService\Web.Config`)
- 5. If you intend to clean up the azure AD applications from the Azure AD tenant after running the sample see Step 5 below.
-
-### Step 3:  Trust the IIS Express SSL certificate
-
-Since the web API is SSL protected, the client of the API (the web app) will refuse the SSL connection to the web API unless it trusts the API's SSL certificate.  Use the following steps in Windows PowerShell to trust the IIS Express SSL certificate.  You only need to do this once.  If you fail to do this step, calls to the TodoListService will always throw an unhandled exception where the inner exception message is:
-
-"The underlying connection was closed: Could not establish trust relationship for the SSL/TLS secure channel."
-
-> Recent versions of Visual Studio will propose themselves to trust the IIS Express SSL certificate. If this is not the case for your installation
-please know that you will need to do this step only once.
-
-
-To configure your computer to trust the IIS Express SSL certificate, begin by opening a Windows PowerShell command window as Administrator.
-
-Query your personal certificate store to find the thumbprint of the certificate for `CN=localhost`:
+Open PowerShell and run New-SelfSignedCertificate with the following parameters to create a self-signed certificate in the user certificate store on your computer:
 
 ```
-PS C:\windows\system32> dir Cert:\LocalMachine\My
 
-
-    Directory: Microsoft.PowerShell.Security\Certificate::LocalMachine\My
-
-
-Thumbprint                                Subject
-----------                                -------
-C24798908DA71693C1053F42A462327543B38042  CN=localhost
-```
-
-Next, add the certificate to the Trusted Root store:
+$cert=New-SelfSignedCertificate -Subject "CN=GetUsersCert" -CertStoreLocation "Cert:\CurrentUser\My"  -KeyExportPolicy Exportable -KeySpec Signature
 
 ```
-PS C:\windows\system32> $cert = (get-item cert:\LocalMachine\My\C24798908DA71693C1053F42A462327543B38042)
-PS C:\windows\system32> $store = (get-item cert:\Localmachine\Root)
-PS C:\windows\system32> $store.Open("ReadWrite")
-PS C:\windows\system32> $store.Add($cert)
-PS C:\windows\system32> $store.Close()
+
+
+### Step 4: Add certificate details to Azure AD manifest file
+
+First you would have to generate all the details and store them in a file and in a format that is consumable by Azure AD
+To do this, copy and paste the following code in the same PowerShell session where you generated the sefl signed certificate.
+
 ```
 
-You can verify the certificate is in the Trusted Root store by running this command:
+$bin = $cert.RawData
+$base64Value = [System.Convert]::ToBase64String($bin)
+$bin = $cert.GetCertHash()
+$base64Thumbprint = [System.Convert]::ToBase64String($bin)
+$keyid = [System.Guid]::NewGuid().ToString()
+$jsonObj = @{customKeyIdentifier=$base64Thumbprint;keyId=$keyid;type="AsymmetricX509Cert";usage="Verify";value=$base64Value}
+$keyCredentials=ConvertTo-Json @($jsonObj) | Out-File "keyCredentials.txt"
 
-`PS C:\windows\system32> dir Cert:\LocalMachine\Root`
+```
 
-### Step 4:  Run the sample
+The content of the generated "keyCredentials.txt" file has the following schema:
 
-Clean the solution, rebuild the solution, and run it.  You might want to go into the solution properties and set both projects as startup projects, with the service project starting first. To do this you can for instance:
- 1. Right click on the solution in the solution explorer and choose **Set Startup projects** from the context menu.
- 2. choose **Multiple startup projects**
-  - TodoListDaemonWithCert: **Start**
-  - TodoListService: Start **Start without debugging**
- 3. In the Visual Studio tool bar, press the **start** button: a web window appears running the service and a console application runs the dameon application under debugger. you can set breakpoints to understand the call to ADAL.NET.
+```
 
-The daemon will add items to its To Do list and then read them back.
+[
+    {
+        "customKeyIdentifier": "$base64Thumbprint_from_above",
+        "keyId": "$keyid_from_above",
+        "type": "AsymmetricX509Cert",
+        "usage": "Verify",
+        "value":  "$base64Value_from_above"
+    }
+]
 
-### Step 5:  Clean up the applications in the Azure AD tenant
-When you are done with running and understanding the sample, if you want to remove your Applications from AD just run:
+```
 
-`.\Cleanup.ps1 <tenant ID>`
+To associate the certificate credential with the GetUsers app object in Azure AD, you will need to edit the application manifest. In the Azure Management Portal app registration for the GetUsers app click on Manifest. A blade opens enabling you to edit the manifest. You need to replace the value of the keyCredentials property (that is [] if you don't have any certificate credentials yet), with the content of the keyCredential.txt file
 
-Replace with the tenant ID that you previously copied from the Azure portal.
-If you do that you also probably want to undo the changes in the `App.config` and `Web.Config`
+To do this replacement in the manifest, you have two options:
+
+Option 1: Edit the manifest in place by clicking Edit, replacing the keyCredentials value, and then clicking Save. Note that if you refresh the web page, the key is displayed with different properties than what you have input. In particular, you can now see the endDate, and stateDate, and the vlaue is shown as null. This is normal.
+
+Option 2: Download the manifest to your computer, edit it with your favorite text editor, save a copy of it, and Upload this copy. You might want to choose this option if you want to keep track of the history of the manifest.
+
+Note that the keyCredentials property is multi-valued, so you may upload multiple certificates for richer key management. In that case copy only the text between the curly brackets.
+
+### Step 5: Configure application
+
+1. Open `app.config'.
+2. Find the app key 'ida:Tenant' and replace the value with your AAD tenant name, something **like contoso.onmicrosoft.com**.
+3. Find the app key 'ida:ClientId' and replace the value with the Client ID for the GetUsers app registration from the Azure portal.
+4. Find the app key `ida:CertName` and replace the value with the subject name of the self-signed certificate you created, e.g. "CN=GetUsersCert".
+
+Now you should be able to run the application
+
+### Step 6: Run the application
+
+Running the application should not be any big deal. However, make sure that you first right click the project and build it, so that all needed packages are installed. 
+The console application will initiate with a 3 seconds delay, and then it will query the Microsoft Graph for all users in the tenant. The user information will be displayed in JSON format, so it might look messy. 
+
+## Some useful information
+
+In `Main()` we define the needed variables and then initialize the certificate that will be used to create the certificate credential to be used by ADAL
+
+```
+X509Certificate2 cert = null;
+            X509Store store = new X509Store(StoreLocation.CurrentUser);
+            try
+            {
+                store.Open(OpenFlags.ReadOnly);
+                X509Certificate2Collection certCollection = store.Certificates;
+                // Find unexpired certificates.
+                X509Certificate2Collection currentCerts = certCollection.Find(X509FindType.FindByTimeValid, DateTime.Now, false);
+                // From the collection of unexpired certificates, find the ones with the correct name.
+                X509Certificate2Collection signingCert = currentCerts.Find(X509FindType.FindBySubjectDistinguishedName, certName, false);
+                if (signingCert.Count == 0)
+                {
+                    // No matching certificate found.
+                    return -1;
+                }
+                // Return the first certificate in the collection, has the right name and is current.
+                cert = signingCert.OfType< X509Certificate2>().OrderByDescending(c => c.NotBefore).First();
+            }
+
+```
+Then we create the certificate credential: 
+
+```
+ certCred = new ClientAssertionCertificate(clientId, cert);
+
+```
+
+In the `GetAllUsers()` method we then request an access token using the certificate credential and then the application sends a request to the Microsoft Graph to retrieve all users. The access token is presented in the request header. 
 
 
-## How to deploy this sample to Azure
-
-TBD.
-
-## About the Code
-
-If you've looked at the code in this sample and are wondering how authorization works, you're not alone.  See [this Stack Overflow question](https://stackoverflow.com/questions/34415348/azure-active-directory-daemon-client-using-certificates/).  The TodoList Service in this solution simply validates that the client was able to authenticate against the tenant that the service is configured to work with.  Effectively, any application in that tenant will be able to use the service.
-
-## How to recreate this sample
-
-First, in Visual Studio 2013 (or above) create an empty solution to host the  projects.  Then, follow these steps to create each project.
-
-### Creating the TodoListService Project
-
-1. In the solution, create a new ASP.Net MVC web API project called TodoListService and while creating the project, click the Change Authentication button, select Organizational Accounts, Cloud - Single Organization, enter the name of your Azure AD tenant, and set the Access Level to Single Sign On.  You will be prompted to sign-in to your Azure AD tenant.  NOTE:  You must sign-in with a user that is in the tenant; you cannot, during this step, sign-in with a Microsoft account.
-2. In the `Models` folder add a new class called `TodoItem.cs`.  Copy the implementation of TodoItem from this sample into the class.
-3. Add a new, empty, Web API 2 controller called `TodoListController`.
-4. Copy the implementation of the TodoListController from this sample into the controller.  Don't forget to add the `[Authorize]` attribute to the class.
-5. In `TodoListController` resolving missing references by adding `using` statements for `System.Collections.Concurrent`, `TodoListService.Models`, `System.Security.Claims`.
-
-### Creating the TodoListDaemon Project
-
-1. In the solution, create a new Windows --> Console Application called TodoListDaemon.
-2. Add the (stable) Active Directory Authentication Library (ADAL) NuGet, Microsoft.IdentityModel.Clients.ActiveDirectory, version 1.0.3 (or higher) to the project.
-3. Add  assembly references to `System.Net.Http`, `System.Web.Extensions`, and `System.Configuration`.
-4. Add a new class to the project called `TodoItem.cs`.  Copy the code from the sample project file of same name into this class, completely replacing the code in the file in the new project.
-5. Copy the code from `Program.cs` in the sample project into the file of same name in the new project, completely replacing the code in the file in the new project.
-6. In `app.config` create keys for `ida:AADInstance`, `ida:Tenant`, `ida:ClientId`, `ida:CertName`, `todo:TodoListResourceId`, and `todo:TodoListBaseAddress` and set them accordingly.  For the public Azure cloud, the value of `ida:AADInstance` is `https://login.microsoftonline.com/{0}`.
-
-Finally, in the properties of the solution itself, set both projects as startup projects.
 
 
-## FAQ
-- [How to use a pre-existing certificate](https://github.com/Azure-Samples/active-directory-dotnet-daemon-certificate-credential/issues/29) instead of generating a self signed certificate.
