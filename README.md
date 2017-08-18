@@ -39,7 +39,7 @@ You can clone this repository from Visual Studio. Alternatively, from your shell
 7. While still in the Azure portal, choose your application, click on Settings and choose Properties.
 8. Find the Application ID value and copy it to the clipboard.
 
-### Step 3: Create a self signe certificate
+### Step 3: Create a self signed certificate
 
 To complete this step you will use the New-SelfSignedCertificate Powershell command. You can find more information about the New-SelfSignedCertificat command here.
 
