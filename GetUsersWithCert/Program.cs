@@ -30,7 +30,7 @@ using System.Web.Script.Serialization;
 using System.Security.Cryptography.X509Certificates;
 using System.Configuration;
 using Newtonsoft.Json;
-namespace TodoListDaemonWithCert
+namespace GetUsersWithCert 
 {
     class Program
     {
