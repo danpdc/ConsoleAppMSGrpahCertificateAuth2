@@ -26,7 +26,7 @@ To run this sample, you will need:
 
 You can clone this repository from Visual Studio. Alternatively, from your shell or command line, use:
 
-`git clone https://github.com/Azure-Samples/active-directory-dotnet-daemon-certificate-credential.git`
+`git clone https://github.com/danpdc/ConsoleAppMSGrpahCertificateAuth2`
 
 ### Step 2:  Register the sample with your Azure Active Directory tenant and configure the code accordingly
 
